@@ -6,31 +6,23 @@
 
 [api](https://docs.github.com/en/rest/repos/contents) - github contents api
 
-## Install
+
+## python
+### Install
 
 ```sh
 pip install git+https://github.com/milisp/github-file-dl
 ```
 
-## Usage
+### Usage
 
-```
-positional arguments:
-  url                   github folder url or file url
-
-options:
-  -h, --help            show this help message and exit
-  -p PROXY, --proxy PROXY
-                        https_prxoy url
-  -d DIR, --dir DIR     special output directory
-  --skip-media          skip image video and audio
-  --skip-image          skip image
-  --skip-audio          skip audio
-  --skip-video          skip video
-  -v, --verbose
+```sh
+github-file-dl -h
+github-file-dl github_url download_folder
+github-file-dl github_url download_folder -p proxy_url
 ```
 
-## main code file
+### main code file
 
 [`__main__.py`](src/github_file_dl/__main__.py)
 

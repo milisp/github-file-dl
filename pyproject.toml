@@ -1,6 +1,6 @@
 [project]
 name = "github-file-dl"
-version = "0.2.0"
+version = "0.3.0"
 description = "download github folder or file."
 authors = [
     {name = "milisp", email = "milisp@proton.me"},

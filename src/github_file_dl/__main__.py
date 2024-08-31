@@ -1,114 +1,106 @@
-# coding: utf-8
 import argparse
-from pathlib import Path
-
+import os
 import requests
+import logging
+from urllib.parse import urlparse, parse_qs, urljoin
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-AUDIO = "mp3 aac"
-VIDEO = "mp4 avi mov"
-IMAGE = "jpeg jpg png"
+def get_github_api_url(github_url):
+    """
+    Convert a GitHub URL into a GitHub API URL for accessing the repository contents.
+    """
+    parsed_url = urlparse(github_url)
+    path_parts = parsed_url.path.strip("/").split("/")
+
+    if len(path_parts) < 3 or path_parts[2] != "tree":
+        raise ValueError(
+            "Invalid GitHub URL. Please ensure it is a URL to a specific folder within the repository."
+        )
+
+    user, repo, _, branch, *folder_path = path_parts
+    api_url = f"https://api.github.com/repos/{user}/{repo}/contents/{'/'.join(folder_path)}?ref={branch}"
+    return api_url, branch, "/".join(folder_path)
 
 
-def url_to_api(url: str):
-    if url.startswith("https://api"):
-        return url
-    try:
-        us = url.split("/")
-        new_url = f'https://api.{us[2]}/repos/{us[3]}/{us[4]}/contents/{"/".join(us[7:])}?ref={us[6]}'
-        print(new_url)
-        return new_url
-    except Exception as e:
-        print(e, "\nwrong url.")
-        exit(1)
+def download_folder(api_url, local_dir, proxies=None):
+    """
+    Download a folder and its contents from the GitHub API.
+    """
+    logger.info(f"Fetching contents from {api_url}")
+    response = requests.get(api_url, proxies=proxies)
+    response.raise_for_status()
+
+    items = response.json()
+
+    if isinstance(items, dict) and items.get("message") == "Not Found":
+        logger.error("Folder not found in the repository.")
+        return
+
+    for item in items:
+        item_name = item["name"]
+        item_path = os.path.join(local_dir, item_name)
+
+        if item["type"] == "file":
+            logger.info(f"Downloading file {item_name}")
+            download_file(item["download_url"], item_path, proxies)
+        elif item["type"] == "dir":
+            logger.info(f"Creating directory {item_name}")
+            os.makedirs(item_path, exist_ok=True)
+            download_folder(item["url"], item_path, proxies)
 
 
-def download_file(url, file_name, ignore_path, proxy="", _dir=""):
-    if not _dir:
-        _dir = "."
-    if proxy:
-        proxies = {"https_proxy": proxy}
-    else:
-        proxies = None
-    print(file_name, ignore_path)
-    if ignore_path != '/':
-        file_name = file_name.replace(ignore_path, '')
-    print(file_name)
-    with requests.get(url, stream=True, proxies=proxies, timeout=3) as response:
-        file_path = Path(_dir) / file_name
-        parent_path = file_path.parent
-        if not parent_path.exists():
-            parent_path.mkdir(parents=True)
-        with open(file_path, "ab") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
+def download_file(file_url, file_path, proxies=None):
+    """
+    Download a single file from the GitHub API.
+    """
+    logger.info(f"Downloading {file_url}")
+    response = requests.get(file_url, proxies=proxies)
+    response.raise_for_status()
 
-
-def vprint(args, *s):
-    if args.verbose:
-        print(*s)
-
-
-def dl(source_url, args):
-    url = url_to_api(source_url)
-    us = source_url.split("/")
-    ignore_path = '/'.join(us[7:-1]) + '/'
-    if args.proxy:
-        proxies = {"https_proxy": args.proxy}
-    else:
-        proxies = None
-    r = requests.get(url, proxies=proxies)
-    data = r.json()
-    if isinstance(data, dict):
-        download_file(data["download_url"], data["path"], ignore_path, args.proxy, args.dir)
-    elif isinstance(data, list):
-        for p in data:
-            durl = p["download_url"]
-            vprint(args, durl)
-            if durl:
-                extension = p["path"].rsplit(".")[-1].lower()
-                if args.skip_audio:
-                    if extension in AUDIO:
-                        continue
-                if args.skip_image:
-                    if extension in IMAGE:
-                        continue
-                if args.skip_video:
-                    if extension in VIDEO:
-                        continue
-                if args.skip_media:
-                    if extension in f"{AUDIO} {IMAGE} {VIDEO}":
-                        continue
-                path = Path(p["path"])
-                vprint(args, "dl", path)
-                if not path.exists() or p["size"] != path.stat().st_size:
-                    download_file(durl, p['path'], ignore_path, args.proxy, args.dir)
-            else:
-                vprint(args, p["html_url"])
-                dl(p["html_url"], args)
-    else:
-        print("data", data)
+    with open(file_path, "wb") as file:
+        file.write(response.content)
+    logger.info(f"Saved to {file_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="github-file-dl",
-        description="download github folder or file",
+        description="Download a specific folder from a GitHub repository."
     )
-    parser.add_argument("url", help="github folder url or file")
-    parser.add_argument("-p", "--proxy", help="https_prxoy url")
-    parser.add_argument("-d", "--dir", help="special output directory")
     parser.add_argument(
-        "--skip-media", action="store_true", help="skip image video and audio"
-    )  # on/off flag
-    parser.add_argument("--skip-image", action="store_true", help="skip image")
-    parser.add_argument("--skip-audio", action="store_true", help="skip audio")
-    parser.add_argument("--skip-video", action="store_true", help="skip video")
-    parser.add_argument("-v", "--verbose", action="store_true")
+        "github_url",
+        help="GitHub URL to the folder (e.g., https://github.com/user/repo/tree/branch/folder)",
+    )
+    parser.add_argument(
+        "output_dir", help="Local directory to save the downloaded contents"
+    )
+    parser.add_argument(
+        "-p", "--proxy", help="Proxy URL (e.g., http://proxy.example.com:8080)", default=None
+    )
 
     args = parser.parse_args()
-    print(args.url, args)
-    dl(args.url, args)
+
+    proxies = None
+    print(args)
+    if args.proxy:
+        proxies = {
+            "http": args.proxy,
+            "https": args.proxy,
+        }
+        logger.info(f"Using proxy: {args.proxy}")
+
+    try:
+        api_url, branch, folder_path = get_github_api_url(args.github_url)
+        os.makedirs(args.output_dir, exist_ok=True)
+        download_folder(api_url, args.output_dir, proxies)
+        logger.info(
+            f"Successfully downloaded folder '{folder_path}' from branch '{branch}'"
+        )
+    except Exception as e:
+        logger.error(f"Error: {e}")
 
 
 if __name__ == "__main__":
