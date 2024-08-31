@@ -26,7 +26,23 @@ github-file-dl github_url download_folder -p proxy_url
 
 [`__main__.py`](src/github_file_dl/__main__.py)
 
+## Rust
+How to Run:
+
+Without Proxy:
+
+```sh
+cargo run --release -- "https://github.com/owner/repo/tree/branch/folder_path"
+```
+
+With Proxy:
+
+```sh
+cargo run --release -- "https://github.com/owner/repo/tree/branch/folder_path" "http://your_proxy_here"
+```
+
 ## Similar or related Projects
 
 - [github-files-fetcher](https://github.com/Gyumeijie/github-files-fetcher) - nodejs
 - [fetch](https://github.com/gruntwork-io/fetch) - golang
+
